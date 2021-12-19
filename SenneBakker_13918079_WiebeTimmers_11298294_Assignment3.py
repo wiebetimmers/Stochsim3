@@ -1,3 +1,5 @@
+import random
+
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -8,7 +10,7 @@ from itertools import chain as c
 import networkx as nx
 from tqdm import tqdm
 
-
+fig = plt.figure(figsize=(6,4), dpi=300)
 # Sources for inspiration
 # Lecture 9
 # https://www.cs.cmu.edu/afs/cs.cmu.edu/project/learn-43/lib/photoz/.g/web/glossary/anneal.html
@@ -21,11 +23,13 @@ def init_cities(text_file):
     cities = {'city': [], 'x': [], 'y': []}
 
     for city in cities_raw:
+        city = city.strip('  ')
         city = city.strip(' ')
         city = city.strip('\n')
         city_entry = city.split(" ")
         if city_entry[0] == 'EOF':
             break
+        city_entry = filter(None, city_entry)
         city_entry = list(map(int, city_entry))
         cities['city'].append(city_entry[0])
         cities['x'].append(city_entry[1])
@@ -65,55 +69,38 @@ def swap(edge):
     edge = (edge[1], edge[0])
     return edge
 
-def mutate_path(cur_path, path_length):
+def two_opt(cur_path):
     path = cur_path.copy()
-    edge1_idx = np.random.randint(1, path_length-1)
-    edge2_idx = np.random.randint(1, path_length-1)
-    while edge1_idx == edge2_idx:
-        edge2_idx = np.random.randint(1, path_length - 1)
-    if edge1_idx > edge2_idx:
-        idx1 = edge2_idx
-        idx2 = edge1_idx
-    else:
-        idx1= edge1_idx
-        idx2= edge2_idx
+    new_path = []
+    for p in path:
+        new_path.append(p[0])
+    new_path.append(path[-1][1])
+    idx1 = random.randint(1, len(new_path)-2)
+    idx2 = random.randint(2, len(new_path))
+    while idx2 == idx1:
+        idx2 = random.randint(2, len(new_path))
 
-    midsect = False
-    #print('point to change:', path[idx1], path[idx2])
+    for i in range(1, len(new_path) - 2):
+        for j in range(i + 1, len(new_path)):
+            if j - i == 1:
+                continue  # changes nothing, skip then
+            new_route = new_path[:]    # Creates a copy of route
+            new_route[i:j] = new_path[j - 1:i - 1:-1]  # this is the 2-optSwap since j >= i we use -1    # change current route to best
+            if i == idx1 and j == idx2:
+                new_path = new_route  # change current route to best
 
-    count_mid = 1
-    for idx, p in enumerate(path):
-        if idx == idx1:
-            temp_side1 = path[idx-1][1]
-            temp_side2 = path[idx2+1][0]
-            path[idx1-1] = (path[idx1-1][0], temp_side2)
-            path[idx2+1] = (path[idx2+1][0], temp_side1)
-            midsect = True
-            store_id1 = path[idx1]
-            path[idx1] = path[idx2]
-            path[idx2] = store_id1
-            path[idx1] = swap(path[idx1])
-            path[idx2] = swap(path[idx2])
+    edge_path = []
+    for i in range(1, len(new_path)):
+        edge_path.append((new_path[i - 1], new_path[i]))
 
-        if midsect == True and idx1 < idx < idx2:
-            swap1 = path[idx]
-            swap2 = path[idx2-count_mid]
-            path[idx2-count_mid] = swap1
-            path[idx] = swap2
-            count_mid += 1
-            path[idx] = swap(path[idx])
-
-        if idx == idx2:
-            midsect = False
-
-    return path
+    return edge_path
 
 
 def temperature(its, total_its, temp_scheme):
     if temp_scheme == 'linear':
         return T0 - (its/total_its)
     elif temp_scheme == 'exp_multi':
-        return T0 * (ALPHA_EXP_MULTI_COOL**its)
+        return T0 * (1+ALPHA_EXP_MULTI_COOL**its)
     elif temp_scheme == 'log_multi':
         return T0 / (1+ALPHA_LOG_MULTI_COOL*np.log(1+its))
     elif temp_scheme == 'quad_multi':
@@ -129,9 +116,7 @@ def simulation(no_cities, dist_cities, its, temp_scheme=None):
         #for i in range(mutate_its): # mutate mutate_its times the 2-opt elementary edit -
         # In SA terms: we sample the next possible state here
         #print(path)
-        print(path)
-        new_path = mutate_path(path, no_cities-1)
-        #print(new_path)
+        new_path = two_opt(path)
         #print(new_path)
         new_tsp_distance = calculate_path_distance(new_path, dist_cities)
         # Sample U
@@ -158,16 +143,31 @@ def get_city_coordinates(city, df_cities):
     y = df_cities.loc[df_cities['city'] == city, 'y'].iloc[0]
     return x, y
 
+def plot_path(path, df_cities, name):
+    for idx, p in enumerate(path):
+        city1 = get_city_coordinates(p[0], df_cities)
+        city2 = get_city_coordinates(p[1], df_cities)
+        x = [city1[0], city2[0]]
+        y = [city1[1], city2[1]]
+        plt.plot(x, y, '-', c='r')
+        plt.text(x[0], y[0], f'{idx}')
+    plt.savefig('path_graphs/path_%s.jpg'%name)
+    plt.clf()
+    return
+
 #showpath()
 #np.random.seed(12345)
-cities = init_cities('eil51.tsp.txt')
+#cities1 = init_cities('eil51.tsp.txt')
+cities = init_cities('a280.tsp.txt')
 df_cities = pd.DataFrame(cities)
 no_cities = len(df_cities)
 distance = DistanceMetric.get_metric('euclidean')
 pw_dis = distance.pairwise(df_cities[['x','y']].to_numpy())
 dist_cities = pd.DataFrame(pw_dis, columns=df_cities.city.unique(), index=df_cities.city.unique())
 
-ITS = 5
+
+
+ITS = 1000
 
 # cooling scheme parameters
 T0 = 1.0
@@ -178,10 +178,11 @@ ALPHA_QUAD_MULTI_COOL = 3
 temp_schemes = ['linear', 'exp_multi', 'log_multi', 'quad_multi']
 distances = []
 paths = []
-'''
+
 for ts in temp_schemes:
-    print('Performing SA with cooling scheme: %s'%ts)
+    print('\nPerforming SA with cooling scheme: %s'%ts)
     path, distance_list = simulation(no_cities, dist_cities, ITS, temp_scheme=ts)
+    plot_path(path, df_cities, ts)
     distances.append(distance_list)
     paths.append(path)
 
@@ -189,26 +190,8 @@ for idx, ds in enumerate(distances):
     plt.plot(list(range(0,ITS,1)), ds, label='%s'%temp_schemes[idx])
 
 plt.legend()
-plt.savefig('distances.jpg')'''
-
-def plot_path(path, df_cities):
-    for idx, p in enumerate(path):
-        city1 = get_city_coordinates(p[0], df_cities)
-        city2 = get_city_coordinates(p[1], df_cities)
-        x = [city1[0], city2[0]]
-        y = [city1[1], city2[1]]
-        plt.plot(x, y, '-', c='r')
-        plt.text(x[0], y[0], f'city {idx}')
-    plt.show()
+plt.savefig('distances.jpg')
 
 
-path, distance_list = simulation(no_cities, dist_cities, ITS, temp_scheme='linear')
-#plot_path(path, df_cities)
-'''
-
-
-plt.show()'''
-
-# Plot the interconnected graph
-#plt.plot(*zip(*c(*list(x(df_cities[['x','y']].to_numpy(),df_cities[['x','y']].to_numpy())))))
-#plt.show()
+#path, distance_list = simulation(no_cities, dist_cities, ITS, temp_scheme='log_multi')
+#plot_path(path, df_cities, 'log_multi')
