@@ -15,13 +15,13 @@ fig = plt.figure(figsize=(6,4), dpi=300)
 # Lecture 9
 # https://www.cs.cmu.edu/afs/cs.cmu.edu/project/learn-43/lib/photoz/.g/web/glossary/anneal.html
 # http://what-when-how.com/artificial-intelligence/a-comparison-of-cooling-schedules-for-simulated-annealing-artificial-intelligence/
+# https://codereview.stackexchange.com/questions/208387/2-opt-algorithm-for-the-traveling-salesman-and-or-sro
 
 def init_cities(text_file):
     f = open(text_file, 'r')
     g = f.readlines()
     cities_raw = g[6:]
     cities = {'city': [], 'x': [], 'y': []}
-
     for city in cities_raw:
         city = city.strip('  ')
         city = city.strip(' ')
@@ -34,7 +34,6 @@ def init_cities(text_file):
         cities['city'].append(city_entry[0])
         cities['x'].append(city_entry[1])
         cities['y'].append(city_entry[2])
-
     return cities
 
 
@@ -54,10 +53,8 @@ def generate_rand_path(no_cities):
         count +=1
         if count == max_edges:
             break
-
     edges.append((edges[-1][1], edges[0][0]))
     return edges
-
 
 def calculate_path_distance(path, distances):
     total_distance = 0.0
@@ -79,20 +76,17 @@ def two_opt(cur_path):
     idx2 = random.randint(2, len(new_path))
     while idx2 == idx1:
         idx2 = random.randint(2, len(new_path))
-
     for i in range(1, len(new_path) - 2):
         for j in range(i + 1, len(new_path)):
             if j - i == 1:
-                continue  # changes nothing, skip then
-            new_route = new_path[:]    # Creates a copy of route
-            new_route[i:j] = new_path[j - 1:i - 1:-1]  # this is the 2-optSwap since j >= i we use -1    # change current route to best
+                continue
+            new_route = new_path[:]
+            new_route[i:j] = new_path[j - 1:i - 1:-1]
             if i == idx1 and j == idx2:
-                new_path = new_route  # change current route to best
-
+                new_path = new_route
     edge_path = []
     for i in range(1, len(new_path)):
         edge_path.append((new_path[i - 1], new_path[i]))
-
     return edge_path
 
 
@@ -107,8 +101,8 @@ def temperature(its, total_its, temp_scheme):
         return T0 / (1+ALPHA_QUAD_MULTI_COOL*(its**2))
     return
 
-def simulation(no_cities, dist_cities, its, temp_scheme=None):
-    path = generate_rand_path(no_cities)
+def simulation(path_init, dist_cities, its, temp_scheme=None):
+    path = path_init
     tsp_distance = calculate_path_distance(path, dist_cities)
     distance_list = []
     path_change_count = 0
@@ -150,14 +144,14 @@ def plot_path(path, df_cities, name):
         x = [city1[0], city2[0]]
         y = [city1[1], city2[1]]
         plt.plot(x, y, '-', c='r')
-        plt.text(x[0], y[0], f'{idx}')
+        plt.text(x[0], y[0], f'{p[0]}')
     plt.savefig('path_graphs/path_%s.jpg'%name)
     plt.clf()
     return
 
-#showpath()
-#np.random.seed(12345)
-#cities1 = init_cities('eil51.tsp.txt')
+
+# Initialization
+np.random.seed(12345)
 cities = init_cities('a280.tsp.txt')
 df_cities = pd.DataFrame(cities)
 no_cities = len(df_cities)
@@ -165,33 +159,32 @@ distance = DistanceMetric.get_metric('euclidean')
 pw_dis = distance.pairwise(df_cities[['x','y']].to_numpy())
 dist_cities = pd.DataFrame(pw_dis, columns=df_cities.city.unique(), index=df_cities.city.unique())
 
-
-
+# Number of SA iterations
 ITS = 1000
 
-# cooling scheme parameters
+# Cooling scheme parameters
 T0 = 1.0
 ALPHA_EXP_MULTI_COOL = 0.85
 ALPHA_LOG_MULTI_COOL = 2
 ALPHA_QUAD_MULTI_COOL = 3
 
-temp_schemes = ['linear', 'exp_multi', 'log_multi', 'quad_multi']
-distances = []
-paths = []
 
-for ts in temp_schemes:
-    print('\nPerforming SA with cooling scheme: %s'%ts)
-    path, distance_list = simulation(no_cities, dist_cities, ITS, temp_scheme=ts)
-    plot_path(path, df_cities, ts)
-    distances.append(distance_list)
-    paths.append(path)
+if __name__ == '__main__':
+    temp_schemes = ['linear', 'exp_multi', 'log_multi', 'quad_multi']
+    distances = []
+    paths = []
+    path_init = generate_rand_path(no_cities)
+    for ts in temp_schemes:
+        print('\nPerforming SA with cooling scheme: %s'%ts)
+        path, distance_list = simulation(path_init, dist_cities, ITS, temp_scheme=ts)
+        plot_path(path, df_cities, ts)
+        distances.append(distance_list)
+        paths.append(path)
+    for idx, ds in enumerate(distances):
+        plt.plot(list(range(0,ITS,1)), ds, label='%s'%temp_schemes[idx])
+    plt.legend()
+    plt.savefig('distances.jpg')
 
-for idx, ds in enumerate(distances):
-    plt.plot(list(range(0,ITS,1)), ds, label='%s'%temp_schemes[idx])
-
-plt.legend()
-plt.savefig('distances.jpg')
-
-
+# Run single simulation
 #path, distance_list = simulation(no_cities, dist_cities, ITS, temp_scheme='log_multi')
 #plot_path(path, df_cities, 'log_multi')
