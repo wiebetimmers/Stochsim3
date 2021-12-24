@@ -13,7 +13,7 @@
     scipy
     itertools
     
-
+## Directory distances contain the graphs used in the report, directory path graphs contains a visualization of the TSP path obtained. 
 
 Code inspiration sources:
 
