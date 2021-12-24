@@ -209,13 +209,13 @@ ITS = 10000
 
 # Cooling scheme parameters
 T0 = 1.0
-ALPHA_EXP_MULTI_COOL = 0.95
+ALPHA_EXP_MULTI_COOL = 0.85
 ALPHA_LOG_MULTI_COOL = 5
 ALPHA_QUAD_MULTI_COOL = 0.95
 SAMPLE_ITS = 10   # we test every method with param setting sample_Its times
 
 # Decide what to run:
-simulation_process = False
+simulation_process = True
 plotting = True
 stat_testing = True
 
@@ -240,7 +240,7 @@ if __name__ == '__main__':
             print('\nPerforming SA with cooling scheme: %s' % ts)
             for i in range(SAMPLE_ITS):
                 path, distance_list = simulation(path_init, dist_cities, ITS, temp_scheme=ts)
-                #plot_path(path, df_cities, ts)
+                plot_path(path, df_cities, ts)
                 distances[ts].append(distance_list)
                 paths[ts].append(path)
         file_to_write = open("results.pickle", "wb")
