@@ -1,5 +1,5 @@
 import random
-
+import pickle as pkl
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -9,6 +9,10 @@ from itertools import product as x
 from itertools import chain as c
 import networkx as nx
 from tqdm import tqdm
+import statistics as st
+import os
+import multiprocessing   # used to improve time efficiency
+from scipy import stats
 
 fig = plt.figure(figsize=(6,4), dpi=300)
 # Sources for inspiration
@@ -149,9 +153,50 @@ def plot_path(path, df_cities, name):
     plt.clf()
     return
 
+def stats_plot(temp_dict, ts):
+    mean_list = []
+    stdev_list = []
+    for i in range(len(temp_dict[0])):
+        entry = [item[i] for item in temp_dict]
+        mean_list.append(st.mean(entry))
+        stdev_list.append(st.stdev(entry))
+
+    last_means = [item[len(temp_dict[0])-1] for item in temp_dict]
+
+    its = list(range(len(temp_dict[0])))
+    plt.xlabel('iterations')
+    plt.ylabel('distance')
+    plt.plot(its, mean_list, 'b-', label='Distance')
+    plt.fill_between(its, np.subtract(mean_list, stdev_list),
+                        np.add(mean_list, stdev_list), color='b', alpha=0.2)
+    plt.savefig('distances/%s_mean_%s'%(ts, SAMPLE_ITS))
+    plt.clf()
+    return mean_list, stdev_list, its, last_means
+
+def stat_test(file, temp_schemes):
+    methods = pd.Series(temp_schemes)
+    infile = open(file, 'rb')
+    data = pkl.load(infile)
+    # fill in p.value for every combination, we do a Welsh t-test and test if the samples are different
+    # We set our p crit value to 0.01
+    # H0: method x mean = method y mean
+    # H1: method x mean != method y mean
+    df = pd.DataFrame(methods.apply(lambda x: methods.apply(lambda y: (stats.ttest_ind(data[x],
+                                                                                       data[y],
+                                                                                       equal_var=False)[1]))))
+    df.index = methods
+    df.columns = methods
+    df.to_excel('stat_test_output.xlsx')
+    for ts in temp_schemes:
+        print('%s mean and stdev'%ts)
+        print(st.mean(data[ts]))
+        print(st.stdev(data[ts]))
+        print('\n')
+    return
 
 # Initialization
-np.random.seed(12345)
+np.random.seed(34537)
+#cities = init_cities('eil51.tsp.txt')
 cities = init_cities('a280.tsp.txt')
 df_cities = pd.DataFrame(cities)
 no_cities = len(df_cities)
@@ -160,30 +205,78 @@ pw_dis = distance.pairwise(df_cities[['x','y']].to_numpy())
 dist_cities = pd.DataFrame(pw_dis, columns=df_cities.city.unique(), index=df_cities.city.unique())
 
 # Number of SA iterations
-ITS = 1000
+ITS = 10000
 
 # Cooling scheme parameters
 T0 = 1.0
-ALPHA_EXP_MULTI_COOL = 0.85
-ALPHA_LOG_MULTI_COOL = 2
-ALPHA_QUAD_MULTI_COOL = 3
+ALPHA_EXP_MULTI_COOL = 0.95
+ALPHA_LOG_MULTI_COOL = 5
+ALPHA_QUAD_MULTI_COOL = 0.95
+SAMPLE_ITS = 10   # we test every method with param setting sample_Its times
 
+# Decide what to run:
+simulation_process = False
+plotting = True
+stat_testing = True
 
 if __name__ == '__main__':
     temp_schemes = ['linear', 'exp_multi', 'log_multi', 'quad_multi']
-    distances = []
-    paths = []
-    path_init = generate_rand_path(no_cities)
-    for ts in temp_schemes:
-        print('\nPerforming SA with cooling scheme: %s'%ts)
-        path, distance_list = simulation(path_init, dist_cities, ITS, temp_scheme=ts)
-        plot_path(path, df_cities, ts)
-        distances.append(distance_list)
-        paths.append(path)
-    for idx, ds in enumerate(distances):
-        plt.plot(list(range(0,ITS,1)), ds, label='%s'%temp_schemes[idx])
-    plt.legend()
-    plt.savefig('distances.jpg')
+    if simulation_process:
+        distances = {
+            'linear':[],
+            'exp_multi':[],
+            'log_multi':[],
+            'quad_multi':[]
+        }
+        paths = {
+            'linear':[],
+            'exp_multi':[],
+            'log_multi':[],
+            'quad_multi':[]
+        }
+        path_init = generate_rand_path(no_cities)
+        sample_its = list(range(1, SAMPLE_ITS + 1, 1))
+        for ts in temp_schemes:
+            print('\nPerforming SA with cooling scheme: %s' % ts)
+            for i in range(SAMPLE_ITS):
+                path, distance_list = simulation(path_init, dist_cities, ITS, temp_scheme=ts)
+                #plot_path(path, df_cities, ts)
+                distances[ts].append(distance_list)
+                paths[ts].append(path)
+        file_to_write = open("results.pickle", "wb")
+        pkl.dump(distances, file_to_write)
+        file_to_write.close()
+
+    if plotting:
+        infile = open("results.pickle", 'rb')
+        new_dict_results = pkl.load(infile)
+        m_lists1 = []
+        m_lists2 = []
+        for ts in temp_schemes:
+            mean_list, stdev_list, its, last_means = stats_plot(new_dict_results[ts], ts)
+            m_lists1.append(last_means)
+            m_lists2.append(mean_list)
+
+        for idx, m in enumerate(m_lists2):
+            plt.plot(its, m, label='%s'%temp_schemes[idx])
+        plt.legend()
+        plt.xlabel('iterations')
+        plt.ylabel('avg_distance')
+        plt.savefig('avg_distances.jpg')
+        plt.clf()
+        file_to_write2 = open("stat_results.pickle", "wb")
+        distances_mean = {
+            'linear': m_lists1[0],
+            'exp_multi': m_lists1[1],
+            'log_multi': m_lists1[2],
+            'quad_multi': m_lists1[3]
+        }
+        pkl.dump(distances_mean, file_to_write2)
+        file_to_write2.close()
+
+    if stat_testing:
+        stat_test("stat_results.pickle", temp_schemes)
+
 
 # Run single simulation
 #path, distance_list = simulation(no_cities, dist_cities, ITS, temp_scheme='log_multi')
