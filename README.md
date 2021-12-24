@@ -1,6 +1,6 @@
-#StochasticSim3
-##File: -SenneBakker_13918079_WiebeTimmers_11298294_Assignment3.py contains all code necessary to run the SA simulations.
-##Code dependencies - Make sure the following packages are installed:
+# StochasticSim3
+## File: -SenneBakker_13918079_WiebeTimmers_11298294_Assignment3.py contains all code necessary to run the SA simulations.
+## Code dependencies - Make sure the following packages are installed:
 
     random
     sklearn
